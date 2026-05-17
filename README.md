@@ -2,13 +2,15 @@
 
 > Render link text as SVG so GitHub stops adding underlines to it.
 
+**→ [Try it in your browser](https://aza-ali.github.io/github-readme-crisp-links/)** · pick a color or gradient, copy the markdown, paste into your README. No install required.
+
 ![Before and after](examples/before-after.png)
 
 GitHub's README CSS forces an underline on any `<a>` tag that contains text. That underline looks fine inline, but it makes project lists feel cluttered, especially when each entry already has an icon, a name, and a description. There's no markdown switch to turn it off. Inline `style=` is stripped. `<font>` is stripped. `text-decoration: none` is stripped.
 
 What's *not* stripped: an `<a>` containing only `<img>` elements. No text node, no underline. So if you render the project name as an SVG and drop the SVG inside the link, the underline goes away and the rest of the styling stays clean. You also get control of the color — pick whatever fits your project's brand instead of GitHub's default link blue.
 
-This is a small Python CLI that does that for you. It measures the width of your project name against Helvetica Bold (so the SVG canvas fits the glyphs without clipping or padding), writes the SVG, and prints the markdown snippet ready to paste into your README.
+This is a small Python CLI (and a [web app](https://aza-ali.github.io/github-readme-crisp-links/)) that does that for you. It measures the width of your project name against Helvetica Bold (so the SVG canvas fits the glyphs without clipping or padding), writes the SVG, and prints the markdown snippet ready to paste into your README.
 
 ## Install
 
@@ -43,14 +45,28 @@ Multiple at once via a JSON batch file:
 python3 crisp.py --batch projects.json
 ```
 
-Where `projects.json` is an array of items, each item supporting any of: `name`, `color`, `output`, `link`, `font`, `font_size`, `font_weight`, `height`, `leading`, `trailing`. CLI flags act as defaults; per-item fields override. See `examples/projects.json`.
+Where `projects.json` is an array of items, each item supporting any of: `name`, `color`, `gradient`, `gradient_angle`, `output`, `link`, `font`, `font_size`, `font_weight`, `height`, `leading`, `trailing`. CLI flags act as defaults; per-item fields override. See `examples/projects.json`.
+
+### Gradients
+
+Single-color SVGs are good, but the same SVG-as-link trick gives you gradients for free:
+
+```bash
+python3 crisp.py "Pixelfox" --gradient rainbow
+python3 crisp.py "Drift"    --gradient dusk --link https://example.com
+python3 crisp.py "Echo"     --gradient "DC2626,F59E0B,EC4899" --gradient-angle 90
+```
+
+Presets: `rainbow`, `sunset`, `ocean`, `mint`, `candy`, `dusk`. Custom: comma-separated hex codes (any number of stops). Angle uses CSS conventions (0=up, 90=right, 180=down, 270=left).
 
 ## Options
 
 | Flag | Default | What it does |
 |---|---|---|
 | `name` | required | The text to render. |
-| `--color` | `0969DA` | Hex color of the text. Accepts `RRGGBB` or `#RRGGBB`, 3 or 6 digit. |
+| `--color` | `0969DA` | Hex color of the text. Accepts `RRGGBB` or `#RRGGBB`, 3 or 6 digit. Ignored if `--gradient` is set. |
+| `--gradient` | none | Preset name (`rainbow`, `sunset`, `ocean`, `mint`, `candy`, `dusk`) or comma-separated hex codes. |
+| `--gradient-angle` | `90` | Gradient direction in degrees, CSS-style. `0`=top→bottom, `90`=left→right (default), `180`=bottom→top, `270`=right→left. |
 | `--output` | `<slug>.svg` | SVG output path. Slugified from the name if not provided. |
 | `--link` | none | Wrap the snippet in `<a href="...">`. |
 | `--font` | auto-detect | Path to a TTF/OTF/TTC. Default tries Helvetica Bold, then DejaVu Sans Bold, then Arial Bold. |
