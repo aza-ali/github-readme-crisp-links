@@ -324,11 +324,12 @@ code {
 }
 .theme-switch-icon {
   position: absolute;
-  inset: 0;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 16px;
+  top: 50%;
+  left: 50%;
+  width: 18px;
+  height: 18px;
+  margin: -9px 0 0 -9px;
+  color: var(--fg);
   transition: opacity 0.25s var(--ease-soft), transform 0.25s var(--ease-soft);
 }
 body[data-app-theme="light"] .theme-switch-icon[data-icon="light"] {
@@ -370,12 +371,13 @@ body[data-app-theme="dark"] .theme-switch-icon[data-icon="dark"] {
 }
 
 .hero-title {
-  font-size: clamp(2.5rem, 6vw, 4.5rem);
+  font-size: clamp(2rem, 6vw, 4.5rem);
   font-weight: 700;
   letter-spacing: -0.035em;
   line-height: 1.04;
   margin: 0 0 var(--space-5);
   color: var(--fg);
+  overflow-wrap: break-word;
 }
 
 .hero-grad {
@@ -1298,6 +1300,17 @@ input[type="range"]:focus::-webkit-slider-thumb { box-shadow: 0 0 0 4px var(--ac
   color: var(--fg);
   border-bottom-color: var(--fg);
   opacity: 1;
+}
+
+.footer-grad {
+  background: var(--grad-rainbow);
+  background-size: 200% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  -webkit-text-fill-color: transparent;
+  font-weight: 700;
+  animation: gradient-shift 14s linear infinite;
 }
 
 /* -------------------------------------------------
