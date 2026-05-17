@@ -48,7 +48,6 @@
     trailing: $("input-trailing"),
     previewCanvas: $("preview-canvas"),
     previewSvg: $("preview-svg"),
-    previewIcon: $("preview-icon"),
     previewLink: $("preview-link"),
     themePills: $$(".theme-pill"),
     appThemeToggle: $("app-theme-toggle"),
