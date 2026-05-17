@@ -22,6 +22,7 @@ to bump --trailing by a px or two.
 import argparse
 import html
 import json
+import math
 import os
 import re
 import sys
@@ -44,6 +45,24 @@ SVG_TEMPLATE = (
     'font-family="-apple-system, BlinkMacSystemFont, &quot;Segoe UI&quot;, Helvetica, Arial, sans-serif" '
     'font-size="{fs}" font-weight="{fw}" fill="{color}">{name}</text></svg>\n'
 )
+
+SVG_TEMPLATE_GRADIENT = (
+    '<svg xmlns="http://www.w3.org/2000/svg" '
+    'width="{w}" height="{h}" viewBox="0 0 {w} {h}">'
+    '<defs>{grad}</defs>'
+    '<text x="{x}" y="{y}" '
+    'font-family="-apple-system, BlinkMacSystemFont, &quot;Segoe UI&quot;, Helvetica, Arial, sans-serif" '
+    'font-size="{fs}" font-weight="{fw}" fill="url(#crisp-grad)">{name}</text></svg>\n'
+)
+
+GRADIENT_PRESETS = {
+    "rainbow": ["#FF6B6B", "#FFA500", "#FFD700", "#10B981", "#4F46E5", "#A855F7"],
+    "sunset": ["#DC2626", "#F59E0B", "#EC4899"],
+    "ocean": ["#06B6D4", "#3B82F6", "#8B5CF6"],
+    "mint": ["#10B981", "#06B6D4"],
+    "candy": ["#EC4899", "#8B5CF6"],
+    "dusk": ["#4F46E5", "#A855F7"],
+}
 
 
 FONT_CANDIDATES = [
@@ -84,21 +103,60 @@ def normalize_color(c):
     return "#" + c.upper()
 
 
-def generate(name, color, font_path, font_size, font_weight, height, leading, trailing):
+def parse_gradient(spec):
+    if isinstance(spec, list):
+        return [normalize_color(c) for c in spec]
+    spec = spec.strip()
+    if spec.lower() in GRADIENT_PRESETS:
+        return [normalize_color(c) for c in GRADIENT_PRESETS[spec.lower()]]
+    return [normalize_color(c) for c in spec.split(",") if c.strip()]
+
+
+def gradient_endpoints(angle_deg):
+    """CSS-style angle: 0=up, 90=right, 180=down, 270=left. Returns (x1, y1, x2, y2) as 0-100 percentages."""
+    rad = math.radians(angle_deg)
+    dx = math.sin(rad)
+    dy = -math.cos(rad)
+    x1 = 50 - dx * 50
+    y1 = 50 - dy * 50
+    x2 = 50 + dx * 50
+    y2 = 50 + dy * 50
+    return x1, y1, x2, y2
+
+
+def build_gradient_def(colors, angle):
+    x1, y1, x2, y2 = gradient_endpoints(angle)
+    n = len(colors)
+    stops = "".join(
+        f'<stop offset="{(0 if n == 1 else i * 100 / (n - 1)):.0f}%" stop-color="{c}"/>'
+        for i, c in enumerate(colors)
+    )
+    return (
+        f'<linearGradient id="crisp-grad" '
+        f'x1="{x1:.1f}%" y1="{y1:.1f}%" x2="{x2:.1f}%" y2="{y2:.1f}%">'
+        f'{stops}</linearGradient>'
+    )
+
+
+def generate(name, color, gradient, gradient_angle, font_path, font_size, font_weight, height, leading, trailing):
     font = load_font(font_path, font_size)
     text_width = font.getlength(name)
     width = int(round(text_width + leading + trailing))
     baseline = round(height - (height - font_size * 0.8) / 2)
-    svg = SVG_TEMPLATE.format(
-        w=width,
-        h=height,
-        x=leading,
-        y=baseline,
-        fs=font_size,
-        fw=font_weight,
-        color=color,
-        name=html.escape(name, quote=True),
-    )
+    if gradient:
+        colors = parse_gradient(gradient)
+        grad_def = build_gradient_def(colors, gradient_angle)
+        svg = SVG_TEMPLATE_GRADIENT.format(
+            w=width, h=height, x=leading, y=baseline,
+            fs=font_size, fw=font_weight, grad=grad_def,
+            name=html.escape(name, quote=True),
+        )
+    else:
+        svg = SVG_TEMPLATE.format(
+            w=width, h=height, x=leading, y=baseline,
+            fs=font_size, fw=font_weight, color=color,
+            name=html.escape(name, quote=True),
+        )
     return svg, width
 
 
@@ -114,7 +172,9 @@ def render_snippet(name, output_path, link):
 
 def process_one(args, item):
     name = item["name"]
-    color = normalize_color(item.get("color", args.color))
+    gradient = item.get("gradient") or args.gradient
+    gradient_angle = item.get("gradient_angle") if "gradient_angle" in item else args.gradient_angle
+    color = None if gradient else normalize_color(item.get("color", args.color))
     output = item.get("output") or args.output or f"{slugify(name)}.svg"
     link = item.get("link") or args.link
     font_path = item.get("font") or args.font
@@ -127,6 +187,8 @@ def process_one(args, item):
     svg, width = generate(
         name=name,
         color=color,
+        gradient=gradient,
+        gradient_angle=gradient_angle,
         font_path=font_path,
         font_size=font_size,
         font_weight=font_weight,
@@ -147,7 +209,9 @@ def build_parser():
         description="Generate SVG link text that bypasses GitHub's README underline.",
     )
     p.add_argument("name", nargs="?", help="Display text (e.g., the project name).")
-    p.add_argument("--color", default="0969DA", help="Hex color of the text. Default: 0969DA (GitHub link blue).")
+    p.add_argument("--color", default="0969DA", help="Hex color of the text. Default: 0969DA (GitHub link blue). Ignored if --gradient is set.")
+    p.add_argument("--gradient", help="Linear gradient as comma-separated hex colors (e.g., 'EC4899,8B5CF6') or preset name (rainbow, sunset, ocean, mint, candy, dusk).")
+    p.add_argument("--gradient-angle", type=int, default=90, help="Gradient angle in degrees, CSS-style. 0=up, 90=right (horizontal, default), 180=down, 270=left.")
     p.add_argument("--output", help="Output SVG path. Default: <slugified-name>.svg in cwd.")
     p.add_argument("--link", help="Wrap the snippet in <a href=...>. Optional.")
     p.add_argument("--font", help="Path to a TTF/OTF/TTC font file. Default: auto-detect Helvetica Bold.")
