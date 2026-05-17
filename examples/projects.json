@@ -1,0 +1,20 @@
+[
+  {
+    "name": "Retina",
+    "color": "D97757",
+    "link": "https://blendpixel.com/products/retina",
+    "output": "examples/retina.svg"
+  },
+  {
+    "name": "Orbit",
+    "color": "D97757",
+    "link": "https://chromewebstore.google.com/detail/orbit/ialabgnikmojmnhoahngjiegigmfhghd",
+    "output": "examples/orbit.svg"
+  },
+  {
+    "name": "Awesome-AI-Product-Management",
+    "color": "D97757",
+    "link": "https://github.com/aza-ali/awesome-ai-product-management",
+    "output": "examples/awesome-ai-product-management.svg"
+  }
+]
