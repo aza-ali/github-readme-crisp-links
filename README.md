@@ -57,6 +57,8 @@ python3 crisp.py "Echo"     --gradient "DC2626,F59E0B,EC4899" --gradient-angle 9
 
 Presets: `rainbow`, `sunset`, `ocean`, `mint`, `candy`, `dusk`. Custom: comma-separated hex codes (any number of stops). Angle uses CSS conventions (0=up, 90=right, 180=down, 270=left).
 
+Gradient SVGs use **vector-path rendering**: the CLI bakes the glyph outlines into the SVG as `<path>` data via fontTools, then fills with a `userSpaceOnUse` gradient. This avoids the fuzzy edges browsers produce when applying gradients to `<text>` elements at small sizes (the OS text rasterizer can't handle multi-color fills, so it falls back to a lower-quality path rasterizer that loses font hinting). Solid colors still use `<text>` because the native rasterizer is sharper for single-color text.
+
 ## Options
 
 | Flag | Default | What it does |

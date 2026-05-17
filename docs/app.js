@@ -551,12 +551,25 @@
   }
 
   // ---- Boot --------------------------------------------------------------
-  function boot() {
+  async function boot() {
     initAppTheme();
     readUrlHash();
     bindEvents();
     applyStateToDom();
+    // First render uses text-based fallback so the UI shows something
+    // immediately. The font load below is what unlocks path-based gradients.
     render();
+
+    try {
+      await Crisp.loadFont("fonts/Inter-Bold.woff");
+      // Re-render now that path-based gradient is available.
+      render();
+    } catch (err) {
+      console.warn(
+        "Font load failed; gradient text will fall back to <text> rendering.",
+        err
+      );
+    }
   }
 
   if (document.readyState === "loading") {

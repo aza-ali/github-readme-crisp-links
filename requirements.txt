@@ -1,1 +1,2 @@
 Pillow>=9.0
+fonttools>=4.0

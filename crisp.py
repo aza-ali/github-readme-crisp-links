@@ -37,6 +37,16 @@ except ImportError:
     )
     sys.exit(2)
 
+# fontTools is only needed for gradient rendering (it converts glyphs to vector
+# paths so the gradient applies cleanly without the per-glyph fuzziness that
+# browsers produce for <text fill="url(#gradient)">).
+try:
+    from fontTools.ttLib import TTFont
+    from fontTools.pens.svgPathPen import SVGPathPen
+    from fontTools.pens.transformPen import TransformPen
+except ImportError:
+    TTFont = None
+
 
 SVG_TEMPLATE = (
     '<svg xmlns="http://www.w3.org/2000/svg" '
@@ -46,13 +56,13 @@ SVG_TEMPLATE = (
     'font-size="{fs}" font-weight="{fw}" fill="{color}">{name}</text></svg>\n'
 )
 
-SVG_TEMPLATE_GRADIENT = (
+SVG_TEMPLATE_PATHS = (
     '<svg xmlns="http://www.w3.org/2000/svg" '
     'width="{w}" height="{h}" viewBox="0 0 {w} {h}">'
     '<defs>{grad}</defs>'
-    '<text x="{x}" y="{y}" '
-    'font-family="-apple-system, BlinkMacSystemFont, &quot;Segoe UI&quot;, Helvetica, Arial, sans-serif" '
-    'font-size="{fs}" font-weight="{fw}" fill="url(#crisp-grad)">{name}</text></svg>\n'
+    '<g fill="url(#crisp-grad)" '
+    'transform="translate({x}, {y}) scale({scale:.6f}, -{scale:.6f})">'
+    '<path d="{d}"/></g></svg>\n'
 )
 
 GRADIENT_PRESETS = {
@@ -91,6 +101,16 @@ def load_font(font_path, font_size):
     return ImageFont.load_default()
 
 
+def find_path_font(user_font_path, user_font_index):
+    """Return (path, index) of a font file usable by fontTools for path-mode."""
+    if user_font_path:
+        return user_font_path, user_font_index or 0
+    for path, index in FONT_CANDIDATES:
+        if os.path.exists(path):
+            return path, index
+    return None, 0
+
+
 def slugify(name):
     s = re.sub(r"[^a-z0-9]+", "-", name.lower())
     return s.strip("-") or "name"
@@ -112,33 +132,86 @@ def parse_gradient(spec):
     return [normalize_color(c) for c in spec.split(",") if c.strip()]
 
 
-def gradient_endpoints(angle_deg):
-    """CSS-style angle: 0=up, 90=right, 180=down, 270=left. Returns (x1, y1, x2, y2) as 0-100 percentages."""
-    rad = math.radians(angle_deg)
-    dx = math.sin(rad)
-    dy = -math.cos(rad)
-    x1 = 50 - dx * 50
-    y1 = 50 - dy * 50
-    x2 = 50 + dx * 50
-    y2 = 50 + dy * 50
-    return x1, y1, x2, y2
-
-
-def build_gradient_def(colors, angle):
-    x1, y1, x2, y2 = gradient_endpoints(angle)
+def _build_path_gradient_def(colors, x_max):
+    """userSpaceOnUse gradient spanning x=0..x_max horizontally (left → right).
+    Coordinates are in the inner font-unit space established by the <g> transform."""
     n = len(colors)
     stops = "".join(
-        f'<stop offset="{(0 if n == 1 else i * 100 / (n - 1)):.0f}%" stop-color="{c}"/>'
+        f'<stop offset="{0 if n == 1 else int(round(i * 100 / (n - 1)))}%" stop-color="{c}"/>'
         for i, c in enumerate(colors)
     )
     return (
-        f'<linearGradient id="crisp-grad" '
-        f'x1="{x1:.1f}%" y1="{y1:.1f}%" x2="{x2:.1f}%" y2="{y2:.1f}%">'
-        f'{stops}</linearGradient>'
+        f'<linearGradient id="crisp-grad" gradientUnits="userSpaceOnUse" '
+        f'x1="0" y1="0" x2="{x_max}" y2="0">{stops}</linearGradient>'
     )
 
 
-def generate(name, color, gradient, gradient_angle, font_path, font_size, font_weight, height, leading, trailing):
+def _generate_paths(name, font_path, font_index, font_size,
+                    height, leading, trailing, colors):
+    """Convert glyphs to vector paths via fontTools, then fill with the gradient.
+
+    Browsers render text-with-gradient via a fallback path that loses font
+    hinting and looks fuzzy at small sizes. Pre-baking glyphs as paths and
+    filling them via userSpaceOnUse gradient produces sharp output that
+    matches the rendering of any other vector shape on the page.
+    """
+    if TTFont is None:
+        raise RuntimeError(
+            "fontTools is required for gradient rendering. "
+            "Install it: pip install fonttools"
+        )
+    font_path_resolved, font_idx = find_path_font(font_path, font_index)
+    if font_path_resolved is None:
+        raise RuntimeError(
+            "no system font found for path-mode rendering; "
+            "pass --font /path/to/Bold.ttf"
+        )
+
+    tt = TTFont(font_path_resolved, fontNumber=font_idx)
+    cmap = tt.getBestCmap()
+    glyph_set = tt.getGlyphSet()
+    hmtx = tt['hmtx']
+    units_per_em = tt['head'].unitsPerEm
+    scale = font_size / units_per_em
+
+    # Accumulate glyph outlines into a single <path> with x-offsets baked into
+    # the coordinates. One path means one bounding box, so the userSpaceOnUse
+    # gradient spans the whole word instead of cycling per glyph.
+    pen = SVGPathPen(glyph_set)
+    x_pen = 0
+    for char in name:
+        glyph_name = cmap.get(ord(char)) or '.notdef'
+        glyph = glyph_set[glyph_name]
+        translated_pen = TransformPen(pen, (1, 0, 0, 1, x_pen, 0))
+        glyph.draw(translated_pen)
+        x_pen += hmtx[glyph_name][0]
+    combined_d = pen.getCommands()
+
+    width = int(round(leading + x_pen * scale + trailing))
+    # See generate() for baseline rationale (align="absmiddle" alignment).
+    baseline = round(height / 2 + font_size * 0.25)
+    grad_def = _build_path_gradient_def(colors, x_pen)
+
+    svg = SVG_TEMPLATE_PATHS.format(
+        w=width, h=height, x=leading, y=baseline, scale=scale,
+        grad=grad_def, d=combined_d,
+    )
+    return svg, width
+
+
+def generate(name, color, gradient, gradient_angle, font_path, font_index,
+             font_size, font_weight, height, leading, trailing):
+    if gradient:
+        # Gradient → path-based rendering (sharp glyphs, clean color spread)
+        colors = parse_gradient(gradient)
+        return _generate_paths(
+            name, font_path, font_index, font_size,
+            height, leading, trailing, colors,
+        )
+
+    # Solid color → keep <text>. Browsers use the native font rasterizer
+    # (with hinting) for single-color text, which is sharper than any path
+    # conversion at small sizes.
     font = load_font(font_path, font_size)
     text_width = font.getlength(name)
     width = int(round(text_width + leading + trailing))
@@ -146,22 +219,13 @@ def generate(name, color, gradient, gradient_angle, font_path, font_size, font_w
     # vertical-align:middle anchors the image center to body x-height middle
     # (~font_size * 0.25 above body baseline). Putting the SVG baseline at
     # height/2 + font_size * 0.25 makes the SVG text baseline land exactly on
-    # body baseline, so the gradient text sits flush with surrounding paragraph.
+    # body baseline, so the text sits flush with surrounding paragraph.
     baseline = round(height / 2 + font_size * 0.25)
-    if gradient:
-        colors = parse_gradient(gradient)
-        grad_def = build_gradient_def(colors, gradient_angle)
-        svg = SVG_TEMPLATE_GRADIENT.format(
-            w=width, h=height, x=leading, y=baseline,
-            fs=font_size, fw=font_weight, grad=grad_def,
-            name=html.escape(name, quote=True),
-        )
-    else:
-        svg = SVG_TEMPLATE.format(
-            w=width, h=height, x=leading, y=baseline,
-            fs=font_size, fw=font_weight, color=color,
-            name=html.escape(name, quote=True),
-        )
+    svg = SVG_TEMPLATE.format(
+        w=width, h=height, x=leading, y=baseline,
+        fs=font_size, fw=font_weight, color=color,
+        name=html.escape(name, quote=True),
+    )
     return svg, width
 
 
@@ -183,6 +247,7 @@ def process_one(args, item):
     output = item.get("output") or args.output or f"{slugify(name)}.svg"
     link = item.get("link") or args.link
     font_path = item.get("font") or args.font
+    font_index = item.get("font_index") if "font_index" in item else args.font_index
     font_size = item.get("font_size") or args.font_size
     font_weight = item.get("font_weight") or args.font_weight
     height = item.get("height") or args.height
@@ -195,6 +260,7 @@ def process_one(args, item):
         gradient=gradient,
         gradient_angle=gradient_angle,
         font_path=font_path,
+        font_index=font_index,
         font_size=font_size,
         font_weight=font_weight,
         height=height,
@@ -220,6 +286,7 @@ def build_parser():
     p.add_argument("--output", help="Output SVG path. Default: <slugified-name>.svg in cwd.")
     p.add_argument("--link", help="Wrap the snippet in <a href=...>. Optional.")
     p.add_argument("--font", help="Path to a TTF/OTF/TTC font file. Default: auto-detect Helvetica Bold.")
+    p.add_argument("--font-index", type=int, default=None, help="Font index inside a TTC collection. Default: 0 if user-supplied, 1 for system Helvetica.ttc (Bold).")
     p.add_argument("--font-size", type=int, default=16, help="Font size in px. Default: 16.")
     p.add_argument("--font-weight", type=int, default=600, help="Font weight. Default: 600.")
     p.add_argument("--height", type=int, default=22, help="SVG height in px. Default: 22.")

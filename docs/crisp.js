@@ -42,6 +42,38 @@
     return _ctx;
   }
 
+  // ---- Path-mode font (opentype.js) -------------------------------------
+  // Used for gradient rendering: converts glyphs to vector paths so the
+  // gradient applies cleanly without per-glyph fuzziness.
+  let _font = null;
+  let _fontLoadPromise = null;
+
+  function loadFont(url) {
+    if (_font) return Promise.resolve(_font);
+    if (_fontLoadPromise) return _fontLoadPromise;
+    if (typeof opentype === "undefined") {
+      return Promise.reject(new Error("opentype.js not loaded"));
+    }
+    _fontLoadPromise = fetch(url)
+      .then((r) => {
+        if (!r.ok) throw new Error("font fetch failed: " + r.status);
+        return r.arrayBuffer();
+      })
+      .then((buf) => {
+        _font = opentype.parse(buf);
+        return _font;
+      })
+      .catch((err) => {
+        _fontLoadPromise = null; // allow retry
+        throw err;
+      });
+    return _fontLoadPromise;
+  }
+
+  function isFontLoaded() {
+    return _font !== null;
+  }
+
   function measureWidth(text, fontSize, fontWeight, fontFamily) {
     const ctx = _measureCtx();
     ctx.font = `${fontWeight} ${fontSize}px ${fontFamily}`;
@@ -108,9 +140,68 @@
       .replace(/'/g, "&apos;");
   }
 
-  function generate(opts) {
-    if (!opts || !opts.name) throw new Error("name is required");
+  // Path-based generator: converts text to vector paths via opentype.js, then
+  // fills with userSpaceOnUse gradient. Avoids the fuzzy rendering browsers
+  // produce for <text fill="url(#g)"> at small sizes. Requires loadFont() first.
+  function generatePaths(opts) {
+    if (!_font) throw new Error("font not loaded; call Crisp.loadFont(url) first");
 
+    const name = opts.name;
+    const fontSize = opts.fontSize ?? DEFAULTS.fontSize;
+    const height = opts.height ?? DEFAULTS.height;
+    const leading = opts.leading ?? DEFAULTS.leading;
+    const trailing = opts.trailing ?? DEFAULTS.trailing;
+    const colors = parseGradient(opts.gradient);
+    const angle = opts.gradientAngle ?? DEFAULTS.gradientAngle;
+
+    const baseline = Math.round(height / 2 + fontSize * 0.25);
+    const advance = _font.getAdvanceWidth(name, fontSize);
+    const width = Math.round(leading + advance + trailing);
+
+    // opentype.js positions glyphs at (x, y) with y = baseline in display coords.
+    // The path data comes out already positioned and scaled — no extra transforms.
+    const path = _font.getPath(name, leading, baseline, fontSize);
+    const pathData = path.toPathData(3); // 3 decimal precision
+
+    const n = colors.length;
+    const stops = colors
+      .map((c, i) => {
+        const offset = n === 1 ? 0 : Math.round((i * 100) / (n - 1));
+        return `<stop offset="${offset}%" stop-color="${c}"/>`;
+      })
+      .join("");
+
+    // userSpaceOnUse so the gradient spans the entire word, not per-glyph.
+    // Default direction is horizontal (leading → leading+advance). For non-90
+    // angles, apply a gradientTransform rotation around the gradient center.
+    const gradX1 = leading;
+    const gradX2 = leading + advance;
+    const cx = (gradX1 + gradX2) / 2;
+    const rotation = angle - 90;
+    const gradientTransform =
+      rotation === 0
+        ? ""
+        : ` gradientTransform="rotate(${rotation} ${cx} ${baseline})"`;
+
+    const gradientDef =
+      `<linearGradient id="crisp-grad" gradientUnits="userSpaceOnUse" ` +
+      `x1="${gradX1}" y1="0" x2="${gradX2}" y2="0"${gradientTransform}>` +
+      stops +
+      `</linearGradient>`;
+
+    const svg =
+      `<svg xmlns="http://www.w3.org/2000/svg" ` +
+      `width="${width}" height="${height}" viewBox="0 0 ${width} ${height}">` +
+      `<defs>${gradientDef}</defs>` +
+      `<path d="${pathData}" fill="url(#crisp-grad)"/>` +
+      `</svg>`;
+
+    return { svg, width, height };
+  }
+
+  // Solid-color path: keeps <text> so the browser uses its native font
+  // rasterizer (with hinting). Smaller, sharper than path conversion at 16px.
+  function generateText(opts) {
     const name = opts.name;
     const fontSize = opts.fontSize ?? DEFAULTS.fontSize;
     const fontWeight = opts.fontWeight ?? DEFAULTS.fontWeight;
@@ -121,16 +212,14 @@
 
     const textWidth = measureWidth(name, fontSize, fontWeight, fontFamily);
     const width = Math.round(textWidth + leading + trailing);
-    // Baseline tuned for align="absmiddle" inline rendering:
-    // vertical-align:middle anchors the image center to body x-height middle
-    // (~fontSize * 0.25 above body baseline). Putting the SVG baseline at
-    // height/2 + fontSize * 0.25 makes the SVG text baseline land exactly on
-    // body baseline when the image sits inline with paragraph text.
+    // See above for align="absmiddle" baseline rationale.
     const baseline = Math.round(height / 2 + fontSize * 0.25);
 
     let gradientDef = "";
     let fill;
     if (opts.gradient) {
+      // Fallback path (no opentype font loaded yet). Uses <text> + gradient
+      // which is fuzzier but renders without the font dependency.
       const colors = parseGradient(opts.gradient);
       const angle = opts.gradientAngle ?? DEFAULTS.gradientAngle;
       gradientDef = `<defs>${buildGradientDef(colors, angle)}</defs>`;
@@ -151,6 +240,15 @@
       `${escapedName}</text></svg>`;
 
     return { svg, width, height };
+  }
+
+  function generate(opts) {
+    if (!opts || !opts.name) throw new Error("name is required");
+    // Gradient + font loaded → path-based (sharp). Otherwise text-based.
+    if (opts.gradient && _font) {
+      return generatePaths(opts);
+    }
+    return generateText(opts);
   }
 
   function slugify(name) {
@@ -193,6 +291,10 @@
     gradientEndpoints,
     buildGradientDef,
     generate,
+    generateText,
+    generatePaths,
+    loadFont,
+    isFontLoaded,
     slugify,
     snippet,
     downloadSvg,
