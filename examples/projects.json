@@ -1,20 +1,24 @@
 [
   {
-    "name": "Retina",
+    "name": "Lumen",
     "color": "D97757",
-    "link": "https://blendpixel.com/products/retina",
-    "output": "examples/retina.svg"
+    "output": "demo/lumen.svg"
   },
   {
-    "name": "Orbit",
-    "color": "D97757",
-    "link": "https://chromewebstore.google.com/detail/orbit/ialabgnikmojmnhoahngjiegigmfhghd",
-    "output": "examples/orbit.svg"
+    "name": "Pixelfox",
+    "gradient": "rainbow",
+    "output": "demo/pixelfox.svg"
   },
   {
-    "name": "Awesome-AI-Product-Management",
-    "color": "D97757",
-    "link": "https://github.com/aza-ali/awesome-ai-product-management",
-    "output": "examples/awesome-ai-product-management.svg"
+    "name": "Drift",
+    "gradient": "dusk",
+    "link": "https://example.com/drift",
+    "output": "demo/drift.svg"
+  },
+  {
+    "name": "Echo",
+    "gradient": "DC2626,F59E0B,EC4899",
+    "gradient_angle": 90,
+    "output": "demo/echo.svg"
   }
 ]
