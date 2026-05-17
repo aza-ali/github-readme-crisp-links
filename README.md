@@ -2,23 +2,13 @@
 
 > Render link text as SVG so GitHub stops adding underlines to it.
 
+![Before and after](examples/before-after.png)
+
 GitHub's README CSS forces an underline on any `<a>` tag that contains text. That underline looks fine inline, but it makes project lists feel cluttered, especially when each entry already has an icon, a name, and a description. There's no markdown switch to turn it off. Inline `style=` is stripped. `<font>` is stripped. `text-decoration: none` is stripped.
 
-What's *not* stripped: an `<a>` containing only `<img>` elements. No text node, no underline. So if you render the project name as an SVG and drop the SVG inside the link, the underline goes away and the rest of the styling stays clean.
+What's *not* stripped: an `<a>` containing only `<img>` elements. No text node, no underline. So if you render the project name as an SVG and drop the SVG inside the link, the underline goes away and the rest of the styling stays clean. You also get control of the color — pick whatever fits your project's brand instead of GitHub's default link blue.
 
 This is a small Python CLI that does that for you. It measures the width of your project name against Helvetica Bold (so the SVG canvas fits the glyphs without clipping or padding), writes the SVG, and prints the markdown snippet ready to paste into your README.
-
-## Before and after
-
-Regular markdown link, with the default underline GitHub applies to link text:
-
-[my-project](https://example.com) — short description that follows the project name on the same line.
-
-Same link, but the project name is rendered as an SVG so there's no underline:
-
-<a href="https://example.com"><img src="examples/demo-default.svg" align="absmiddle" alt="my-project" /></a> — short description that follows the project name on the same line.
-
-The SVG renders in whatever font the viewer's browser has available. Width is calibrated against Helvetica Bold by default; you can pass `--font` if you want a tighter match to your README's body font.
 
 ## Install
 
