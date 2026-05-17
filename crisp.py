@@ -142,7 +142,12 @@ def generate(name, color, gradient, gradient_angle, font_path, font_size, font_w
     font = load_font(font_path, font_size)
     text_width = font.getlength(name)
     width = int(round(text_width + leading + trailing))
-    baseline = round(height - (height - font_size * 0.8) / 2)
+    # Baseline tuned for align="absmiddle" inline rendering:
+    # vertical-align:middle anchors the image center to body x-height middle
+    # (~font_size * 0.25 above body baseline). Putting the SVG baseline at
+    # height/2 + font_size * 0.25 makes the SVG text baseline land exactly on
+    # body baseline, so the gradient text sits flush with surrounding paragraph.
+    baseline = round(height / 2 + font_size * 0.25)
     if gradient:
         colors = parse_gradient(gradient)
         grad_def = build_gradient_def(colors, gradient_angle)

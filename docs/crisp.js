@@ -121,7 +121,12 @@
 
     const textWidth = measureWidth(name, fontSize, fontWeight, fontFamily);
     const width = Math.round(textWidth + leading + trailing);
-    const baseline = Math.round(height - (height - fontSize * 0.8) / 2);
+    // Baseline tuned for align="absmiddle" inline rendering:
+    // vertical-align:middle anchors the image center to body x-height middle
+    // (~fontSize * 0.25 above body baseline). Putting the SVG baseline at
+    // height/2 + fontSize * 0.25 makes the SVG text baseline land exactly on
+    // body baseline when the image sits inline with paragraph text.
+    const baseline = Math.round(height / 2 + fontSize * 0.25);
 
     let gradientDef = "";
     let fill;
