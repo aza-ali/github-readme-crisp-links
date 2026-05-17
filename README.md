@@ -1,10 +1,8 @@
 # Crisp Links for GitHub READMEs
 
-> Render link text as SVG so GitHub stops adding underlines to it.
+<a href="https://aza-ali.github.io/github-readme-crisp-links/"><img src="examples/before-after.png" alt="Before and after" /></a>
 
 <a href="https://aza-ali.github.io/github-readme-crisp-links/"><img src="examples/try-in-browser.svg" alt="Try it in your browser" /></a> · pick a color or gradient, copy the markdown, paste into your README. No install required.
-
-<a href="https://aza-ali.github.io/github-readme-crisp-links/"><img src="examples/before-after.png" alt="Before and after" /></a>
 
 GitHub's README CSS forces an underline on any `<a>` tag that contains text. That underline looks fine inline, but it makes project lists feel cluttered, especially when each entry already has an icon, a name, and a description. There's no markdown switch to turn it off. Inline `style=` is stripped. `<font>` is stripped. `text-decoration: none` is stripped.
 
